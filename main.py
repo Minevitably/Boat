@@ -1,9 +1,17 @@
+import os
+import shutil
 import sys
 from PyQt6 import QtWidgets
 from PyQt6.QtCore import pyqtSlot
-from PyQt6.QtWidgets import QWidget, QInputDialog, QMessageBox, QPushButton, QSpacerItem, QSizePolicy
+from PyQt6.QtWidgets import QWidget, QInputDialog, QMessageBox, QPushButton, QSpacerItem, QSizePolicy, QApplication, \
+    QVBoxLayout, QListWidget, QHBoxLayout, QFileDialog
 from Form import Ui_Form
 import xml.etree.ElementTree as ET
+
+from miy.album.album import MGridWidget
+
+from miy.clazz.manage import ClassManager
+
 
 class MWindow(QWidget, Ui_Form):
 
@@ -15,10 +23,21 @@ class MWindow(QWidget, Ui_Form):
         self.displayMenu(self.defaultMenuPage)
         # 默认显示系统简介视图页面
         self.displayView(self.defaultViewPage)
+        self.xml_file_path = "class.xml"
 
+        self.load_xml()
+        layout = self.classMGridWidget.layout()
+        layout.itemAt(0).widget().deleteLater()
+        self.classMGridWidget = MGridWidget()
+        layout.addWidget(self.classMGridWidget)
+
+        self.center_on_screen()
+
+    def load_xml(self):
         # 读取 XML 文件内容
-        self.class_data = self.load_class_data("class.xml")
+        self.class_data = self.load_class_data(self.xml_file_path)
         self.populate_buttons()
+
         print(self.class_data)  # 打印读取的数据
 
     def load_class_data(self, file_path):
@@ -55,25 +74,41 @@ class MWindow(QWidget, Ui_Form):
                 else:
                     # 如果是间隔器，直接移除
                     self.class_layout.removeItem(item)
-
         # 添加新按钮
         for class_info in self.class_data:
             btn = QPushButton(class_info['btnName'])
             btn.clicked.connect(
-                lambda checked, name=class_info['name'], path=class_info['relativePath']: self.on_button_click(name,
-                                                                                                               path))
+                lambda checked, name=class_info['name'], btnName=class_info['btnName'], path=class_info['relativePath']:
+                self.on_button_click(name, btnName, path))
             self.class_layout.addWidget(btn)
         # 添加一个垂直间隔器到布局底部
         spacer = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
         self.class_layout.addItem(spacer)
 
-    def on_button_click(self, name, path):
+    def on_button_click(self, name, btnName, path):
         """
         处理按钮点击事件
         :param name: 分类名称
+        :param btnName: 按钮名称
         :param path: 相对路径
         """
         print(f"分类名称: {name}, 相对路径: {path}")
+        self.classLabel.setText(f"正在加载文件路径: {path}")  # 更新标签文本以指示正在加载
+
+        # 更新文件路径
+        self.classMGridWidget.update_file_path(path)
+        self.currentClassName = name
+        self.currentBtnName = btnName
+        self.currentUploadPath = path
+
+        # 统计图片数量
+        if os.path.exists(path):
+            files = os.listdir(path)
+            image_files = [f for f in files if f.endswith(('.jpg', '.jpeg', '.png'))]
+            count = len(image_files)
+            self.classLabel.setText(f"{btnName} 共 {count} 张图片")
+        else:
+            self.classLabel.setText("路径不存在或无效！")
 
     def setupEvent(self):
         # 一级菜单
@@ -105,7 +140,7 @@ class MWindow(QWidget, Ui_Form):
 
         # 船舶小目标存取对应的二级菜单
         # 选择分类
-        self.chooseClassBtn.clicked.connect(lambda: self.displayView(self.targetAccessViewPage))
+        self.chooseClassBtn.clicked.connect(self.chooseClass)
         # 新建分类
         self.addClassBtn.clicked.connect(self.addClass)
 
@@ -125,6 +160,16 @@ class MWindow(QWidget, Ui_Form):
         # M3
         self.M3ModelBtn.clicked.connect(self.M3Model)
 
+        # 上传
+        self.uploadBtn.clicked.connect(self.uploadPicture)
+
+    @pyqtSlot()
+    def chooseClass(self):
+        """打开窗口以管理分类"""
+        self.class_manager_window = ClassManager(self.xml_file_path)
+        self.class_manager_window.data_changed.connect(self.load_xml)  # 连接信号
+        self.class_manager_window.show()
+
     @pyqtSlot(QWidget)
     def displayView(self, page):
         self.viewStackedWidget.setCurrentWidget(page)
@@ -142,20 +187,78 @@ class MWindow(QWidget, Ui_Form):
         chinese_name, ok1 = QInputDialog.getText(self, "输入分类中文名", "请输入分类中文名:")
 
         # 如果用户点击了确认
-        if ok1:
+        if ok1 and chinese_name:
             # 获取用户输入的分类文件夹名称（英文）
             folder_name, ok2 = QInputDialog.getText(self, "输入分类文件夹名称", "请输入分类文件夹名称（英文）:")
 
             # 如果用户点击了确认
-            if ok2:
-                # 打印用户输入的内容
+            if ok2 and folder_name:
+                # 创建文件夹路径
+                folder_path = os.path.join("dataset", "test", folder_name)
+
+                # 创建新文件夹
+                os.makedirs(folder_path, exist_ok=True)
+
+                # 更新 XML 配置文件
+                self.update_xml_config(folder_name, chinese_name, folder_path)
+
                 print(f"分类中文名: {chinese_name}, 分类文件夹名称: {folder_name}")
+                QMessageBox.information(self, "成功", "分类创建成功！")
+                self.load_xml()
             else:
                 QMessageBox.warning(self, "警告", "未输入分类文件夹名称！")
         else:
             QMessageBox.warning(self, "警告", "未输入分类中文名！")
 
-        pass
+    def update_xml_config(self, folder_name, chinese_name, folder_path):
+        """
+        更新 XML 配置文件
+        :param folder_name: 分类文件夹名称（英文）
+        :param chinese_name: 分类中文名
+        :param folder_path: 分类文件夹路径
+        """
+        tree = ET.parse(self.xml_file_path)
+        root = tree.getroot()
+
+        # 创建新的 class 元素
+        new_class = ET.Element("class")
+        name_elem = ET.SubElement(new_class, "name")
+        name_elem.text = folder_name
+        btn_name_elem = ET.SubElement(new_class, "btnName")
+        btn_name_elem.text = chinese_name
+        relative_path_elem = ET.SubElement(new_class, "relativePath")
+        relative_path_elem.text = folder_path
+
+        # 将新的 class 元素添加到根节点
+        root.append(new_class)
+
+        # 保存更新后的 XML 文件
+        tree.write(self.xml_file_path, encoding='utf-8', xml_declaration=True)
+
+    def uploadPicture(self):
+        try:
+            # 使用 QFileDialog 获取多个文件路径
+            file_names, _ = QFileDialog.getOpenFileNames(self, "选择图片", "",
+                                                         "Images (*.png *.jpg *.jpeg);;All Files (*)")
+
+            if file_names:
+                for file_path in file_names:
+                    self.copy_file(file_path)
+
+                QMessageBox.information(self, "成功", "文件已成功上传！")
+                self.on_button_click(self.currentClassName, self.currentBtnName, self.currentUploadPath)
+            else:
+                QMessageBox.warning(self, "警告", "没有选择任何文件。")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"发生错误: {e}")
+
+    def copy_file(self, file_path):
+        try:
+            if os.path.isfile(file_path):
+                shutil.copy2(file_path, self.currentUploadPath)  # 复制文件到目标文件夹
+        except Exception as e:
+            QMessageBox.warning(self, "错误", f"无法复制文件: {e}")
+
 
     def YoloModel(self):
         print("YoloModel")
@@ -185,6 +288,13 @@ class MWindow(QWidget, Ui_Form):
         print("M3Model")
 
         pass
+
+    def center_on_screen(self):
+        screen = QApplication.primaryScreen().geometry()  # 获取屏幕大小
+        window_rect = self.frameGeometry()  # 获取窗口大小
+        center_point = screen.center()  # 获取屏幕中心点
+        window_rect.moveCenter(center_point)  # 将窗口中心移动到屏幕中心
+        self.move(window_rect.topLeft())  # 设置窗口位置
 
 
 if __name__ == "__main__":

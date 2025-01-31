@@ -1,10 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
 <annotation>
     <class>
         <name>small_ship</name>
         <btnName>小船</btnName>
         <relativePath>dataset\test\small_ship</relativePath>
     </class>
-	<class>
+    <class>
         <name>fishing_ship</name>
         <btnName>渔船</btnName>
         <relativePath>dataset\test\fishing_ship</relativePath>

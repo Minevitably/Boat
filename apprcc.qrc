@@ -1,5 +1,6 @@
 <RCC>
   <qresource prefix="pic">
+    <file>resource/images/icons8-boat-100.png</file>
     <file>resource/images/icons8-boat-50.png</file>
     <file>resource/images/cartoon1.ico</file>
     <file>resource/images/cartoon2.ico</file>

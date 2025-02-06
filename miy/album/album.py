@@ -1,9 +1,9 @@
 import math
 import os
 import sys
-
 from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QApplication, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QScrollArea, QDialog
+from PyQt6.QtWidgets import QApplication, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QScrollArea, QDialog, \
+    QProgressDialog
 from PyQt6.QtCore import Qt, QEvent
 
 
@@ -69,11 +69,19 @@ class MGridWidget(QWidget):
 
     def init_grid(self):
         self.boxes = []
-
+        progress_dialog = QProgressDialog()
         # 获取文件夹中所有文件
         try:
             files = os.listdir(self.file_path)
             image_files = [f for f in files if f.endswith(('.jpg', '.jpeg', '.png'))]  # 过滤出图片文件
+
+            if len(image_files) > 100:
+                # 创建进度对话框
+                progress_dialog = QProgressDialog("加载图片中，请稍候...", "取消", 0, len(image_files), self)
+                progress_dialog.setWindowTitle("加载进度")
+                progress_dialog.setModal(True)  # 设置为模态
+                progress_dialog.setValue(0)
+                progress_dialog.show()
 
             for i, image_file in enumerate(image_files):
                 box = QWidget()
@@ -110,6 +118,15 @@ class MGridWidget(QWidget):
                     event, img_path)
 
                 self.boxes.append(box)
+
+                if len(image_files) > 100:
+                    progress_dialog.setValue(i + 1)  # 更新进度条
+                if progress_dialog.wasCanceled():
+                    break  # 如果用户点击了取消，则退出循环
+
+            if len(image_files) > 100:
+                progress_dialog.close()  # 加载完成后关闭进度对话框
+
         except FileNotFoundError:
             print(f"Directory {self.file_path} not found.")
         except Exception as e:

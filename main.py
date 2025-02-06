@@ -4,7 +4,7 @@ import sys
 from PyQt6 import QtWidgets
 from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtWidgets import QWidget, QInputDialog, QMessageBox, QPushButton, QSpacerItem, QSizePolicy, QApplication, \
-    QVBoxLayout, QListWidget, QHBoxLayout, QFileDialog
+    QVBoxLayout, QListWidget, QHBoxLayout, QFileDialog, QProgressDialog
 from Form import Ui_Form
 import xml.etree.ElementTree as ET
 
@@ -25,12 +25,16 @@ class MWindow(QWidget, Ui_Form):
         self.displayView(self.defaultViewPage)
         self.xml_file_path = "class.xml"
 
+        # 一些初始化工作，例如将第二个页面的默认选中的分类设置为小船
         self.load_xml()
         layout = self.classMGridWidget.layout()
         layout.itemAt(0).widget().deleteLater()
         self.classMGridWidget = MGridWidget()
         layout.addWidget(self.classMGridWidget)
 
+        # 这里有个神奇的bug，如果注释下面这一行就会保持MGridWidget正常大小，现在MGridWidget有点高
+        # 但不影响系统正常运行，暂时不管
+        self.on_class_button_click('small_ship', '小船', r'dataset\test\small_ship')
         self.center_on_screen()
 
     def load_xml(self):
@@ -79,13 +83,13 @@ class MWindow(QWidget, Ui_Form):
             btn = QPushButton(class_info['btnName'])
             btn.clicked.connect(
                 lambda checked, name=class_info['name'], btnName=class_info['btnName'], path=class_info['relativePath']:
-                self.on_button_click(name, btnName, path))
+                self.on_class_button_click(name, btnName, path))
             self.class_layout.addWidget(btn)
         # 添加一个垂直间隔器到布局底部
         spacer = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
         self.class_layout.addItem(spacer)
 
-    def on_button_click(self, name, btnName, path):
+    def on_class_button_click(self, name, btnName, path):
         """
         处理按钮点击事件
         :param name: 分类名称
@@ -202,6 +206,11 @@ class MWindow(QWidget, Ui_Form):
                 # 更新 XML 配置文件
                 self.update_xml_config(folder_name, chinese_name, folder_path)
 
+                self.currentClassName = folder_name
+                self.currentBtnName = chinese_name
+                self.currentUploadPath = folder_path
+                self.on_class_button_click(self.currentClassName,self.currentBtnName,self.currentUploadPath)
+
                 print(f"分类中文名: {chinese_name}, 分类文件夹名称: {folder_name}")
                 QMessageBox.information(self, "成功", "分类创建成功！")
                 self.load_xml()
@@ -242,11 +251,23 @@ class MWindow(QWidget, Ui_Form):
                                                          "Images (*.png *.jpg *.jpeg);;All Files (*)")
 
             if file_names:
-                for file_path in file_names:
+                progress_dialog = QProgressDialog("上传文件中，请稍候...", "取消", 0, len(file_names), self)
+                progress_dialog.setWindowTitle("上传进度")
+                progress_dialog.setModal(True)  # 设置为模态
+                progress_dialog.setValue(0)
+                progress_dialog.show()
+
+                for i, file_path in enumerate(file_names):
                     self.copy_file(file_path)
+                    progress_dialog.setValue(i + 1)  # 更新进度条
+
+                    if progress_dialog.wasCanceled():
+                        break  # 如果用户点击了取消，则退出循环
+
+                progress_dialog.close()  # 上传完成后关闭进度对话框
 
                 QMessageBox.information(self, "成功", "文件已成功上传！")
-                self.on_button_click(self.currentClassName, self.currentBtnName, self.currentUploadPath)
+                self.on_class_button_click(self.currentClassName, self.currentBtnName, self.currentUploadPath)
             else:
                 QMessageBox.warning(self, "警告", "没有选择任何文件。")
         except Exception as e:

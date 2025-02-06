@@ -54,8 +54,8 @@ class MGridWidget(QWidget):
         self.scroll_area.setWidget(self.scroll_content)  # 将内部 widget 设置为滚动区域的内容
         self.file_path = "picture"
         self.boxes = []
-        self.init_grid()
-        self.update_grid()
+        # self.init_grid()
+        # self.update_grid()
 
         # 主布局
         main_layout = QVBoxLayout(self)

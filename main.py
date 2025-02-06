@@ -1,16 +1,21 @@
 import os
 import shutil
 import sys
+
+import torch
 from PyQt6 import QtWidgets
 from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtWidgets import QWidget, QInputDialog, QMessageBox, QPushButton, QSpacerItem, QSizePolicy, QApplication, \
-    QVBoxLayout, QListWidget, QHBoxLayout, QFileDialog, QProgressDialog
+    QVBoxLayout, QListWidget, QHBoxLayout, QFileDialog, QProgressDialog, QDialog
+from ultralytics import YOLO
+
 from Form import Ui_Form
 import xml.etree.ElementTree as ET
 
 from miy.album.album import MGridWidget
 
 from miy.clazz.manage import ClassManager
+from utils import FileSelectorDialog
 
 
 class MWindow(QWidget, Ui_Form):
@@ -24,18 +29,34 @@ class MWindow(QWidget, Ui_Form):
         # 默认显示系统简介视图页面
         self.displayView(self.defaultViewPage)
         self.xml_file_path = "class.xml"
+        self.load_xml()
 
         # 一些初始化工作，例如将第二个页面的默认选中的分类设置为小船
-        self.load_xml()
+        self.replaceWidget()
+
+        # 这里有个神奇的bug，如果注释下面这一行classMGridWidget就会保持正常大小，现在classMGridWidget有点高
+        # 但不影响系统正常运行，暂时不管
+        self.on_class_button_click('small_ship', '小船', r'dataset\test\small_ship')
+        self.center_on_screen()
+
+    def replaceWidget(self):
+        # 小目标存取页面的相册组件
         layout = self.classMGridWidget.layout()
         layout.itemAt(0).widget().deleteLater()
         self.classMGridWidget = MGridWidget()
         layout.addWidget(self.classMGridWidget)
 
-        # 这里有个神奇的bug，如果注释下面这一行就会保持MGridWidget正常大小，现在MGridWidget有点高
-        # 但不影响系统正常运行，暂时不管
-        self.on_class_button_click('small_ship', '小船', r'dataset\test\small_ship')
-        self.center_on_screen()
+        # 小目标检测页面的相册组件
+        layout = self.detectMGridWidget.layout()
+        layout.itemAt(0).widget().deleteLater()
+        self.detectMGridWidget = MGridWidget()
+        layout.addWidget(self.detectMGridWidget)
+
+        # 小目标去噪页面的相册组件
+        layout = self.noiseReductionMGridWidget.layout()
+        layout.itemAt(0).widget().deleteLater()
+        self.noiseReductionMGridWidget = MGridWidget()
+        layout.addWidget(self.noiseReductionMGridWidget)
 
     def load_xml(self):
         # 读取 XML 文件内容
@@ -167,6 +188,121 @@ class MWindow(QWidget, Ui_Form):
         # 上传
         self.uploadBtn.clicked.connect(self.uploadPicture)
 
+        # 小目标检测选择测试集
+        self.detectChooseTestSetBtn.clicked.connect(self.detectChooseTestSet)
+        # 小目标检测开始检测
+        self.detectStartBtn.clicked.connect(self.detectStart)
+        # 小目标去噪选择测试集
+        self.noiseReductionChooseTestSetBtn.clicked.connect(self.noiseReductionChooseTestSet)
+        # 小目标去噪开始检测
+        self.noiseReductionStartBtn.clicked.connect(self.noiseReductionStart)
+
+    def detectChooseTestSet(self):
+        print('小目标检测选择测试集')
+        dialog = FileSelectorDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            selected_files = dialog.get_selected_files()
+            if selected_files:
+                self.detectTestSet = selected_files
+                print(self.detectTestSet)
+
+                # 清空 tmp_path 下的所有文件
+                tmp_path = 'run/detect/tmp'
+                self.clear_tmp_path(tmp_path)
+
+                # 将选中的文件复制到 tmp_path
+                self.copy_selected_files(selected_files, tmp_path)
+
+                # 更新文件路径
+                self.detectMGridWidget.update_file_path(tmp_path)
+                QMessageBox.information(self, "选择成功", "已选择测试集文件！")
+            else:
+                QMessageBox.warning(self, "选择警告", "没有选择任何文件。")
+
+    def clear_tmp_path(self, tmp_path):
+        # 检查目录是否存在
+        if os.path.exists(tmp_path):
+            # 删除目录下所有文件
+            for filename in os.listdir(tmp_path):
+                file_path = os.path.join(tmp_path, filename)
+                try:
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    print(f"无法删除 {file_path}: {e}")
+        else:
+            os.makedirs(tmp_path)  # 如果目录不存在，则创建
+
+    def copy_selected_files(self, selected_files, tmp_path):
+        for file in selected_files:
+            try:
+                shutil.copy(file, tmp_path)
+            except Exception as e:
+                print(f"无法复制 {file} 到 {tmp_path}: {e}")
+
+    def detectStart(self):
+        print('小目标检测开始检测')
+        tmp_path = 'run/detect/tmp'
+
+        # 检查设备
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+        # 初始化模型
+        self.model = YOLO('yolo11n.pt')  # 不需要 device 参数
+
+        # 确定输出目录
+        exp_dir = 'run/detect/exp1'
+        counter = 1
+        while os.path.exists(exp_dir):
+            counter += 1
+            exp_dir = f'run/detect/exp{counter}'  # 找到下一个可用的目录
+
+        os.makedirs(exp_dir)  # 创建输出目录
+
+        # 遍历 tmp_path 中的所有文件
+        for filename in os.listdir(tmp_path):
+            file_path = os.path.join(tmp_path, filename)
+
+            # 确保是文件
+            if os.path.isfile(file_path):
+                print(f'正在处理文件: {filename}')
+
+                # 使用 YOLO 模型进行检测，并指定保存路径
+                results = self.model.predict(source=file_path, save=True, project=exp_dir, name=filename)  # 直接保存检测结果
+
+        print(f'检测完成，结果保存在: {exp_dir}')
+
+
+
+    def noiseReductionChooseTestSet(self):
+        print('小目标去噪选择测试集')
+        dialog = FileSelectorDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            selected_files = dialog.get_selected_files()
+            if selected_files:
+                self.noiseReductionTestSet = selected_files
+                print(self.noiseReductionTestSet)
+
+                # 清空 tmp_path 下的所有文件
+                tmp_path = 'run/noiseReduction/tmp'
+                self.clear_tmp_path(tmp_path)
+
+                # 将选中的文件复制到 tmp_path
+                self.copy_selected_files(selected_files, tmp_path)
+
+                # 更新文件路径
+                self.noiseReductionMGridWidget.update_file_path(tmp_path)
+                QMessageBox.information(self, "选择成功", "已选择测试集文件！")
+            else:
+                QMessageBox.warning(self, "选择警告", "没有选择任何文件。")
+        pass
+
+    def noiseReductionStart(self):
+        print('小目标去噪开始检测')
+
+        pass
     @pyqtSlot()
     def chooseClass(self):
         """打开窗口以管理分类"""

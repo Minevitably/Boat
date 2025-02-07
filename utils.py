@@ -16,7 +16,7 @@ class FileSelectorDialog(QDialog):
         # 创建树视图
         self.tree_view = QTreeView(self)
         self.layout.addWidget(self.tree_view)
-
+        self.tree_view.setHeaderHidden(True)
         # 创建模型
         self.model = QStandardItemModel()
         self.tree_view.setModel(self.model)
@@ -40,6 +40,7 @@ class FileSelectorDialog(QDialog):
 
     def populate_tree_view(self, path):
         root_item = self.model.invisibleRootItem()
+        root_item.setCheckable(True)
         self.add_items(root_item, path)
 
     def add_items(self, parent_item, path):

@@ -286,7 +286,7 @@
           <enum>QFrame::Plain</enum>
          </property>
          <property name="currentIndex">
-          <number>2</number>
+          <number>3</number>
          </property>
          <widget class="QWidget" name="defaultMenuPage"/>
          <widget class="QWidget" name="backgroundMenuPage">
@@ -635,7 +635,7 @@
               </spacer>
              </item>
              <item>
-              <widget class="QPushButton" name="YoloModelBtn">
+              <widget class="QPushButton" name="Yolov10ModelBtn">
                <property name="sizePolicy">
                 <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
                  <horstretch>0</horstretch>
@@ -646,7 +646,45 @@
                 <enum>Qt::LeftToRight</enum>
                </property>
                <property name="text">
-                <string>Yolo</string>
+                <string>Yolov10</string>
+               </property>
+               <property name="autoRepeat">
+                <bool>false</bool>
+               </property>
+               <property name="autoExclusive">
+                <bool>false</bool>
+               </property>
+               <property name="autoRepeatDelay">
+                <number>300</number>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="horizontalSpacer_33">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>40</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item>
+              <widget class="QPushButton" name="Yolov11ModelBtn">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="layoutDirection">
+                <enum>Qt::LeftToRight</enum>
+               </property>
+               <property name="text">
+                <string>Yolov11</string>
                </property>
                <property name="autoRepeat">
                 <bool>false</bool>
@@ -1321,7 +1359,7 @@
                        <rect>
                         <x>0</x>
                         <y>0</y>
-                        <width>332</width>
+                        <width>341</width>
                         <height>332</height>
                        </rect>
                       </property>
@@ -1591,7 +1629,7 @@
                       <x>0</x>
                       <y>0</y>
                       <width>438</width>
-                      <height>438</height>
+                      <height>441</height>
                      </rect>
                     </property>
                     <property name="layoutDirection">

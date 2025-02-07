@@ -109,6 +109,14 @@ class FileSelectorDialog(QDialog):
         return self.selected_files
 
     def collect_checked_files(self, item):
+        # TODO: 现在只能选择文件项或者最底层的目录，把这个hasChildren改成rowCount()会出现很奇怪的对象报错
+        """
+无法复制 <PyQt6.QtCore.QDir object at 0x000001DAA4F86F50> 到 run/noiseReduction/tmp: expected str, bytes or os.PathLike object, not QDir
+
+        :param item:
+        :return:
+        """
+
         if item.hasChildren():
             if item.checkState() == Qt.CheckState.Checked:
                 filters = QDir.Filter.AllEntries | QDir.Filter.NoDotAndDotDot

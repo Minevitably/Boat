@@ -2,6 +2,7 @@ import os
 import shutil
 import sys
 
+import cv2
 import torch
 from PyQt6 import QtWidgets
 from PyQt6.QtCore import pyqtSlot
@@ -15,6 +16,7 @@ import xml.etree.ElementTree as ET
 from miy.album.album import MGridWidget
 
 from miy.clazz.manage import ClassManager
+from model_apis import Yolov11Predict, DETRPredict, RCNNPredict, M1Predict, M2Predict, M3Predict, Yolov10Predict
 from utils import FileSelectorDialog
 
 
@@ -33,6 +35,8 @@ class MWindow(QWidget, Ui_Form):
 
         # 一些初始化工作，例如将第二个页面的默认选中的分类设置为小船
         self.replaceWidget()
+        self.detectModelFun = None
+        self.noiseReductionModelFun = None
 
         # 这里有个神奇的bug，如果注释下面这一行classMGridWidget就会保持正常大小，现在classMGridWidget有点高
         # 但不影响系统正常运行，暂时不管
@@ -152,6 +156,7 @@ class MWindow(QWidget, Ui_Form):
         # 主要信息查看
         self.mainInfoBtn.clicked.connect(lambda: self.displayMenu(self.defaultMenuPage))
         self.mainInfoBtn.clicked.connect(lambda: self.displayView(self.mainInfoViewPage))
+        self.mainInfoBtn.clicked.connect(self.updateMainInfoLabel)
 
         # 海上船舶小目标识别背景与意义对应的二级菜单
         # 背景与意义
@@ -170,8 +175,10 @@ class MWindow(QWidget, Ui_Form):
         self.addClassBtn.clicked.connect(self.addClass)
 
         # 船舶小目标检测对应的二级菜单
-        # Yolo
-        self.YoloModelBtn.clicked.connect(self.YoloModel)
+        # Yolov10
+        self.Yolov10ModelBtn.clicked.connect(self.Yolov10Model)
+        # Yolov11
+        self.Yolov11ModelBtn.clicked.connect(self.Yolov11Model)
         # DETR
         self.DETRModelBtn.clicked.connect(self.DETRModel)
         # RCNN
@@ -196,6 +203,34 @@ class MWindow(QWidget, Ui_Form):
         self.noiseReductionChooseTestSetBtn.clicked.connect(self.noiseReductionChooseTestSet)
         # 小目标去噪开始检测
         self.noiseReductionStartBtn.clicked.connect(self.noiseReductionStart)
+
+
+
+    def updateMainInfoLabel(self):
+        # 读取 XML 文件
+        class_data = self.class_data  # 假设 class_data 已经通过 load_xml 填充
+        class_file_count = []
+
+        # 获取分类数量
+        class_count = len(class_data)
+        display_text = f"本系统存储图像共 {class_count} 个分类，其中：\n"
+
+        # 遍历每个类，计算文件数量
+        for class_info in class_data:
+            relative_path = class_info['relativePath']
+
+            # 计算文件数量
+            if os.path.exists(relative_path):
+                file_count = len(os.listdir(relative_path))  # 获取文件数量
+            else:
+                file_count = 0  # 路径不存在时文件数量为 0
+
+            # 添加到显示文本
+            display_text += f"{class_info['btnName']} 下 {file_count} 张图像；\n"
+
+        display_text += "目标检测模型4个；图像去噪模型3个；\n"
+        # 更新主信息标签
+        self.mainInfoLabel.setText(display_text.strip())
 
     def detectChooseTestSet(self):
         print('小目标检测选择测试集')
@@ -243,14 +278,14 @@ class MWindow(QWidget, Ui_Form):
                 print(f"无法复制 {file} 到 {tmp_path}: {e}")
 
     def detectStart(self):
+        # 检查模型是否选择
+        if self.detectModelFun is None:
+            # 创建消息框
+            QMessageBox.warning(self, "选择模型", "请先选择一个检测模型。")
+            return
+
         print('小目标检测开始检测')
         tmp_path = 'run/detect/tmp'
-
-        # 检查设备
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-        # 初始化模型
-        self.model = YOLO('yolo11n.pt')  # 不需要 device 参数
 
         # 确定输出目录
         exp_dir = 'run/detect/exp1'
@@ -261,17 +296,43 @@ class MWindow(QWidget, Ui_Form):
 
         os.makedirs(exp_dir)  # 创建输出目录
 
-        # 遍历 tmp_path 中的所有文件
-        for filename in os.listdir(tmp_path):
+        # 获取文件列表
+        files = [f for f in os.listdir(tmp_path) if os.path.isfile(os.path.join(tmp_path, f))]
+        total_files = len(files)
+
+        # 创建进度对话框
+        progress_dialog = QProgressDialog("正在处理文件...", "取消", 0, total_files)
+        progress_dialog.setWindowTitle("处理进度")
+        progress_dialog.setModal(True)
+        progress_dialog.show()
+
+        for i, filename in enumerate(files):
             file_path = os.path.join(tmp_path, filename)
 
-            # 确保是文件
-            if os.path.isfile(file_path):
-                print(f'正在处理文件: {filename}')
+            print(f'正在处理文件: {filename}')
 
-                # 使用 YOLO 模型进行检测，并指定保存路径
-                results = self.model.predict(source=file_path, save=True, project=exp_dir, name=filename)  # 直接保存检测结果
+            # 读取图片
+            src_img = cv2.imread(file_path)
 
+            # 使用 小目标检测 模型进行检测
+
+            res_img = self.detectModelFun(src_img)
+
+            # 保存处理后的图片
+            output_path = os.path.join(exp_dir, filename)
+            cv2.imwrite(output_path, res_img)  # 保存结果图像
+
+            # 更新进度条
+            progress_dialog.setValue(i + 1)
+            progress_dialog.setLabelText(f'正在处理文件: {filename}')
+
+            # 检查用户是否取消
+            if progress_dialog.wasCanceled():
+                print("检测已被取消")
+                break
+
+        progress_dialog.close()
+        self.detectMGridWidget.update_file_path(exp_dir)
         print(f'检测完成，结果保存在: {exp_dir}')
 
 
@@ -300,9 +361,63 @@ class MWindow(QWidget, Ui_Form):
         pass
 
     def noiseReductionStart(self):
+        # 检查模型是否选择
+        if self.noiseReductionModelFun is None:
+            # 创建消息框
+            QMessageBox.warning(self, "选择模型", "请先选择一个去噪模型。")
+            return
         print('小目标去噪开始检测')
 
-        pass
+        tmp_path = 'run/noiseReduction/tmp'
+
+        # 确定输出目录
+        exp_dir = 'run/noiseReduction/exp1'
+        counter = 1
+        while os.path.exists(exp_dir):
+            counter += 1
+            exp_dir = f'run/noiseReduction/exp{counter}'  # 找到下一个可用的目录
+
+        os.makedirs(exp_dir)  # 创建输出目录
+
+        # 获取文件列表
+        files = [f for f in os.listdir(tmp_path) if os.path.isfile(os.path.join(tmp_path, f))]
+        total_files = len(files)
+
+        # 创建进度对话框
+        progress_dialog = QProgressDialog("正在处理文件...", "取消", 0, total_files)
+        progress_dialog.setWindowTitle("处理进度")
+        progress_dialog.setModal(True)
+        progress_dialog.show()
+
+        for i, filename in enumerate(files):
+            file_path = os.path.join(tmp_path, filename)
+
+            print(f'正在处理文件: {filename}')
+
+            # 读取图片
+            src_img = cv2.imread(file_path)
+
+
+            # 使用 小目标去噪 模型进行检测
+            res_img = self.noiseReductionModelFun(src_img)
+
+            # 保存处理后的图片
+            output_path = os.path.join(exp_dir, filename)
+            cv2.imwrite(output_path, res_img)  # 保存结果图像
+
+            # 更新进度条
+            progress_dialog.setValue(i + 1)
+            progress_dialog.setLabelText(f'正在处理文件: {filename}')
+
+            # 检查用户是否取消
+            if progress_dialog.wasCanceled():
+                print("检测已被取消")
+                break
+
+        progress_dialog.close()
+        self.noiseReductionMGridWidget.update_file_path(exp_dir)
+        print(f'检测完成，结果保存在: {exp_dir}')
+
     @pyqtSlot()
     def chooseClass(self):
         """打开窗口以管理分类"""
@@ -416,34 +531,51 @@ class MWindow(QWidget, Ui_Form):
         except Exception as e:
             QMessageBox.warning(self, "错误", f"无法复制文件: {e}")
 
+    def Yolov10Model(self):
+        print("Yolov10Model")
+        # 创建消息框
+        QMessageBox.information(self, "选择模型", "选择了Yolov10模型。")
+        self.detectModelFun = Yolov10Predict
+        pass
 
-    def YoloModel(self):
-        print("YoloModel")
+    def Yolov11Model(self):
+        print("Yolov11Model")
+        # 创建消息框
+        QMessageBox.information(self, "选择模型", "选择了Yolov11模型。")
+        self.detectModelFun = Yolov11Predict
         pass
 
     def DETRModel(self):
         print("DETRModel")
-
+        # 创建消息框
+        QMessageBox.information(self, "选择模型", "选择了DETR模型。")
+        self.detectModelFun = DETRPredict
         pass
 
     def RCNNModel(self):
         print("RCNNModel")
-
+        QMessageBox.information(self, "选择模型", "选择了RCNN模型。")
+        self.detectModelFun = RCNNPredict
         pass
 
     def M1Model(self):
         print("M1Model")
-
+        QMessageBox.information(self, "选择模型", "选择了M1模型。")
+        self.noiseReductionModelFun = M1Predict
         pass
 
     def M2Model(self):
         print("M2Model")
+        QMessageBox.information(self, "选择模型", "选择了M2模型。")
 
+        self.noiseReductionModelFun = M2Predict
         pass
 
     def M3Model(self):
         print("M3Model")
+        QMessageBox.information(self, "选择模型", "选择了M3模型。")
 
+        self.noiseReductionModelFun = M3Predict
         pass
 
     def center_on_screen(self):

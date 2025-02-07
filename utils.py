@@ -1,8 +1,10 @@
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTreeView, QPushButton, QMessageBox, QLabel
-from PyQt6.QtCore import QDir, QTimer
-from PyQt6.QtGui import QStandardItemModel, QStandardItem, QPixmap
-from PyQt6.QtCore import Qt
+import sys
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTreeView, QPushButton, QMessageBox, QApplication
+from PyQt6.QtCore import QDir, Qt
+from PyQt6.QtGui import QStandardItemModel, QStandardItem
+
 from miy.album.album import ImageDialog
+
 
 class FileSelectorDialog(QDialog):
     def __init__(self, parent=None):
@@ -24,6 +26,10 @@ class FileSelectorDialog(QDialog):
 
         # 连接双击信号
         self.tree_view.doubleClicked.connect(self.on_item_double_clicked)
+
+        # 连接复选框状态变化信号
+        self.model.itemChanged.connect(self.on_item_changed)
+        self.model.itemChanged.connect(self.update_check_state)
 
         # 按钮
         self.ok_button = QPushButton("确认选择", self)
@@ -56,8 +62,16 @@ class FileSelectorDialog(QDialog):
                 file_item.setCheckState(Qt.CheckState.Unchecked)  # 默认不选中
                 dir_item.appendRow(file_item)
 
-        # 连接复选框状态变化
         dir_item.setEditable(False)  # 不允许手动编辑，防止直接修改
+
+    def on_item_changed(self, item):
+        if item.checkState() == Qt.CheckState.Checked:
+            # print(f"Checked: {item.text()}")
+            pass
+        else:
+            # print(f"Unchecked: {item.text()}")
+            pass
+
 
     def update_check_state(self, item):
         # 如果文件夹被勾选，递归勾选所有子项
@@ -81,6 +95,7 @@ class FileSelectorDialog(QDialog):
             if not item.hasChildren():  # 只有在选中的是文件时才弹出预览
                 image_path = item.data()
                 if image_path:
+                    QMessageBox.information(self, "Image Path", image_path)  # 显示文件路径
                     dialog = ImageDialog(image_path)
                     dialog.exec()  # 显示图像对话框
 
@@ -109,8 +124,7 @@ class FileSelectorDialog(QDialog):
                 if file_path:  # 检查文件路径是否存在
                     self.selected_files.append(file_path)
 
-    def add_images_from_folder(self, folder_path):
-        filters = QDir.Filter.AllEntries | QDir.Filter.NoDotAndDotDot
-        for file_info in QDir(folder_path).entryInfoList(filters):
-            if file_info.isFile() and file_info.suffix() in ['png', 'jpg', 'jpeg']:
-                self.selected_files.append(file_info.filePath())
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    dialog = FileSelectorDialog()
+    dialog.exec()

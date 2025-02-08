@@ -31,4 +31,4 @@
         <btnName>游艇</btnName>
         <relativePath>dataset\test\yacht</relativePath>
     </class>
-<class><name>test</name><btnName>测试</btnName><relativePath>dataset\test\test</relativePath></class></annotation>
+</annotation>

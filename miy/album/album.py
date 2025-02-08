@@ -1,35 +1,89 @@
 import math
 import os
 import sys
-from PyQt6.QtGui import QPixmap
+
+import cv2
+from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtWidgets import QApplication, QWidget, QGridLayout, QLabel, QVBoxLayout, QHBoxLayout, QScrollArea, QDialog, \
     QProgressDialog
 from PyQt6.QtCore import Qt, QEvent
 
 
-
+import cv2
+from PyQt6.QtWidgets import QDialog, QLabel, QVBoxLayout, QSizePolicy, QApplication
+from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtCore import QTimer, Qt
 
 class ImageDialog(QDialog):
-    def __init__(self, image_path):
+    def __init__(self, media_path):
         super().__init__()
-        self.setWindowTitle(image_path)
-        self.resize(800, 600)  # 使用 resize 代替 setGeometry 以便后续调整居中
-        self.setStyleSheet("background-color: black;")  # 设置背景颜色
+        self.setWindowTitle(media_path)
+        self.resize(800, 600)
+        self.setMinimumSize(300, 200)  # 设置最小窗口大小
+        self.setStyleSheet("background-color: black;")
 
-        # 创建图片标签
-        pixmap = QPixmap(image_path)
-        label = QLabel()
-        label.setPixmap(
-            pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # 创建媒体标签
+        self.media_label = QLabel()
+        self.media_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.media_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # 布局
         layout = QVBoxLayout()
-        layout.addWidget(label)
+        layout.addWidget(self.media_label)
         self.setLayout(layout)
 
-        # 居中窗口
+        # 媒体相关属性
+        self.cap = None
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_frame)
+
+        # 判断是图片还是视频
+        if media_path.lower().endswith(('.jpg', '.jpeg', '.png')):
+            self.display_image(media_path)
+        elif media_path.lower().endswith(('.avi', '.mp4')):
+            self.open_video_file(media_path)
         self.center_on_screen()
+
+    def display_image(self, image_path):
+        pixmap = QPixmap(image_path)
+        self.media_label.setPixmap(
+            pixmap.scaled(self.media_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+
+    def open_video_file(self, video_path):
+        self.cap = cv2.VideoCapture(video_path)
+        if not self.cap.isOpened():
+            print("无法打开视频文件")
+            return
+        self.timer.start(30)  # 每30毫秒更新一次
+
+    def update_frame(self):
+        if self.cap is not None and self.cap.isOpened():
+            ret, frame = self.cap.read()
+            if not ret:
+                self.timer.stop()
+                return
+
+            # 将 BGR 转换为 RGB
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            # 缩放视频帧以适应 QLabel
+            scaled_frame = self.scale_frame(frame, self.media_label.size())
+
+            # 转换为 QImage
+            h, w, ch = scaled_frame.shape
+            bytes_per_line = ch * w
+            q_image = QImage(scaled_frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+
+            # 更新 QLabel
+            self.media_label.setPixmap(QPixmap.fromImage(q_image))
+
+    def scale_frame(self, frame, size):
+        return cv2.resize(frame, (size.width(), size.height()), interpolation=cv2.INTER_AREA)
+
+    def closeEvent(self, event):
+        if self.cap is not None:
+            self.cap.release()
+        event.accept()
 
     def center_on_screen(self):
         screen = QApplication.primaryScreen().geometry()  # 获取屏幕大小
@@ -37,6 +91,15 @@ class ImageDialog(QDialog):
         center_point = screen.center()  # 获取屏幕中心点
         window_rect.moveCenter(center_point)  # 将窗口中心移动到屏幕中心
         self.move(window_rect.topLeft())  # 设置窗口位置
+
+    def resizeEvent(self, event):
+        # 调整图像显示
+        if self.cap is None:  # 仅在显示图片时调整
+            self.display_image(self.windowTitle())  # 重新加载当前显示的图片
+        else:
+            # 对于视频，更新当前帧的显示
+            self.update_frame()
+        super().resizeEvent(event)  # 调用基类的 resizeEvent
 
 
 class MGridWidget(QWidget):
@@ -52,11 +115,11 @@ class MGridWidget(QWidget):
         self.layout = QGridLayout(self.scroll_content)  # 将 grid layout 设置为 scroll_content 的布局
 
         self.scroll_area.setWidget(self.scroll_content)  # 将内部 widget 设置为滚动区域的内容
-        self.file_path = "picture"
+        self.file_path = "video"
         self.boxes = []
-        # self.init_grid()
-        # self.update_grid()
-
+        self.init_grid()
+        self.update_grid()
+        self.image_dialog = []
         # 主布局
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)  # 设置主布局的边距为0
@@ -73,11 +136,11 @@ class MGridWidget(QWidget):
         # 获取文件夹中所有文件
         try:
             files = os.listdir(self.file_path)
-            image_files = [f for f in files if f.endswith(('.jpg', '.jpeg', '.png'))]  # 过滤出图片文件
+            image_files = [f for f in files if f.endswith(('.jpg', '.jpeg', '.png', 'avi', 'mp4'))]  # 过滤出图片文件和视频文件
 
             if len(image_files) > 100:
                 # 创建进度对话框
-                progress_dialog = QProgressDialog("加载图片中，请稍候...", "取消", 0, len(image_files), self)
+                progress_dialog = QProgressDialog("加载中，请稍候...", "取消", 0, len(image_files), self)
                 progress_dialog.setWindowTitle("加载进度")
                 progress_dialog.setModal(True)  # 设置为模态
                 progress_dialog.setValue(0)
@@ -88,11 +151,25 @@ class MGridWidget(QWidget):
                 box.setMinimumSize(99, 99)  # 设置成小于100的值以防无法缩小组件
                 box.setMaximumSize(100, 100)
 
-                # 创建图片标签
+                # 创建标签
                 label = QLabel(f"{i}")
                 label.setStyleSheet("color: red;")
-                pixmap = QPixmap(os.path.join(self.file_path, image_file))  # 加载图片
-                label.setPixmap(pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio))  # 设置图片大小
+
+                # 判断文件类型并加载相应的内容
+                if image_file.endswith(('.avi', '.mp4')):  # 视频文件
+                    cap = cv2.VideoCapture(os.path.join(self.file_path, image_file))
+                    ret, frame = cap.read()  # 读取第一帧
+                    if ret:
+                        # 转换为 QPixmap
+                        height, width, channel = frame.shape
+                        bytes_per_line = 3 * width
+                        qimg = QImage(frame.data, width, height, bytes_per_line, QImage.Format.Format_RGB888).rgbSwapped()
+                        pixmap = QPixmap.fromImage(qimg)
+                        label.setPixmap(pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio))  # 设置图片大小
+                    cap.release()
+                else:  # 图片文件
+                    pixmap = QPixmap(os.path.join(self.file_path, image_file))  # 加载图片
+                    label.setPixmap(pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio))  # 设置图片大小
 
                 label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # 居中对齐
 
@@ -100,10 +177,14 @@ class MGridWidget(QWidget):
                 box_layout = QVBoxLayout(box)
                 box_layout.addWidget(label)
 
-                name_label = QLabel(image_file)  # 显示图片文件名
-                name_label.setStyleSheet("background-color: transparent;")  # 设置背景色为透明
-                box_layout.addWidget(name_label)
+                # 创建名称标签
+                name_label = QLabel(image_file)  # 显示文件名
+                if image_file.endswith(('.avi', '.mp4')):  # 如果是视频文件
+                    name_label.setStyleSheet("color: green; background-color: transparent;")  # 绿色字体
+                else:
+                    name_label.setStyleSheet("color: black; background-color: transparent;")  # 黑色字体
 
+                box_layout.addWidget(name_label)
                 box_layout.setAlignment(label, Qt.AlignmentFlag.AlignCenter)
 
                 # 添加 hover 效果
@@ -142,7 +223,9 @@ class MGridWidget(QWidget):
     def show_image(self, event, image_path):
         if event.button() == Qt.MouseButton.LeftButton:  # 确保是左键点击
             dialog = ImageDialog(image_path)
-            dialog.exec()  # 显示对话框
+            self.image_dialog.append(dialog)
+            dialog.setWindowModality(Qt.WindowModality.NonModal)  # 设置为非模态
+            dialog.show()  # 以非模态方式显示对话框
 
     def update_grid(self):
         for i in range(self.layout.count()):

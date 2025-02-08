@@ -56,7 +56,7 @@ class FileSelectorDialog(QDialog):
         for file_info in QDir(path).entryInfoList(filters):
             if file_info.isDir():
                 self.add_items(dir_item, file_info.filePath())
-            elif file_info.suffix() in ['png', 'jpg', 'jpeg']:
+            elif file_info.suffix() in ['png', 'jpg', 'jpeg', 'avi', 'mp4']:
                 file_item = QStandardItem(file_info.fileName())
                 file_item.setData(file_info.filePath())  # 存储文件路径
                 file_item.setCheckable(True)  # 使文件项可复选
@@ -72,7 +72,6 @@ class FileSelectorDialog(QDialog):
         else:
             # print(f"Unchecked: {item.text()}")
             pass
-
 
     def update_check_state(self, item):
         # 如果文件夹被勾选，递归勾选所有子项
@@ -96,7 +95,7 @@ class FileSelectorDialog(QDialog):
             if not item.hasChildren():  # 只有在选中的是文件时才弹出预览
                 image_path = item.data()
                 if image_path:
-                    QMessageBox.information(self, "Image Path", image_path)  # 显示文件路径
+                    # QMessageBox.information(self, "Image Path", image_path)  # 显示文件路径
                     dialog = ImageDialog(image_path)
                     dialog.exec()  # 显示图像对话框
 
@@ -121,7 +120,7 @@ class FileSelectorDialog(QDialog):
             if item.checkState() == Qt.CheckState.Checked:
                 filters = QDir.Filter.AllEntries | QDir.Filter.NoDotAndDotDot
                 for file_info in QDir(item.data()).entryInfoList(filters):
-                    if file_info.isFile() and file_info.suffix() in ['png', 'jpg', 'jpeg']:
+                    if file_info.isFile() and file_info.suffix() in ['png', 'jpg', 'jpeg', 'avi', 'mp4']:
                         self.selected_files.append(file_info.filePath())
                 return
             for row in range(item.rowCount()):
@@ -132,6 +131,7 @@ class FileSelectorDialog(QDialog):
                 file_path = item.data()
                 if file_path:  # 检查文件路径是否存在
                     self.selected_files.append(file_path)
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

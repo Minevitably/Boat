@@ -3,12 +3,10 @@ import shutil
 import sys
 
 import cv2
-import torch
 from PyQt6 import QtWidgets
 from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtWidgets import QWidget, QInputDialog, QMessageBox, QPushButton, QSpacerItem, QSizePolicy, QApplication, \
-    QVBoxLayout, QListWidget, QHBoxLayout, QFileDialog, QProgressDialog, QDialog
-from ultralytics import YOLO
+    QFileDialog, QProgressDialog, QDialog
 
 from Form import Ui_Form
 import xml.etree.ElementTree as ET
@@ -24,6 +22,13 @@ class MWindow(QWidget, Ui_Form):
 
     def __init__(self):
         super().__init__()
+        self.class_data = None
+        self.noiseReductionMGridWidget = None
+        self.detectMGridWidget = None
+        self.currentUploadPath = None
+        self.currentBtnName = None
+        self.currentClassName = None
+        self.classMGridWidget = None
         self.setupUi(self)
         self.setupEvent()
         # 默认显示空的二级菜单页面
@@ -130,12 +135,19 @@ class MWindow(QWidget, Ui_Form):
         self.currentBtnName = btnName
         self.currentUploadPath = path
 
-        # 统计图片数量
+        # 统计图片和视频数量
         if os.path.exists(path):
             files = os.listdir(path)
             image_files = [f for f in files if f.endswith(('.jpg', '.jpeg', '.png'))]
-            count = len(image_files)
-            self.classLabel.setText(f"{btnName} 共 {count} 张图片")
+            video_files = [f for f in files if f.endswith(('.avi', '.mp4'))]
+
+            image_count = len(image_files)
+            video_count = len(video_files)
+
+            if image_count == 0 and video_count == 0:
+                self.classLabel.setText("该路径下没有找到图片或视频。")
+            else:
+                self.classLabel.setText(f"{btnName} 共 {image_count} 张图片，共 {video_count} 个视频")
         else:
             self.classLabel.setText("路径不存在或无效！")
 
@@ -204,8 +216,6 @@ class MWindow(QWidget, Ui_Form):
         # 小目标去噪开始检测
         self.noiseReductionStartBtn.clicked.connect(self.noiseReductionStart)
 
-
-
     def updateMainInfoLabel(self):
         # 读取 XML 文件
         class_data = self.class_data  # 假设 class_data 已经通过 load_xml 填充
@@ -219,14 +229,23 @@ class MWindow(QWidget, Ui_Form):
         for class_info in class_data:
             relative_path = class_info['relativePath']
 
+            # 初始化计数器
+            image_count = 0
+            video_count = 0
+
             # 计算文件数量
             if os.path.exists(relative_path):
-                file_count = len(os.listdir(relative_path))  # 获取文件数量
+                files = os.listdir(relative_path)
+
+                # 统计图片和视频文件
+                image_count = len([f for f in files if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
+                video_count = len([f for f in files if f.lower().endswith(('.avi', '.mp4'))])
             else:
-                file_count = 0  # 路径不存在时文件数量为 0
+                display_text += f"{class_info['btnName']} 路径不存在\n"
+                continue  # 跳过到下一个类
 
             # 添加到显示文本
-            display_text += f"{class_info['btnName']} 下 {file_count} 张图像；\n"
+            display_text += f"{class_info['btnName']} 下 {image_count} 张图像； {video_count} 个视频\n"
 
         display_text += "目标检测模型4个；图像去噪模型3个；\n"
         # 更新主信息标签
@@ -309,18 +328,52 @@ class MWindow(QWidget, Ui_Form):
         for i, filename in enumerate(files):
             file_path = os.path.join(tmp_path, filename)
 
+            # 打印正在处理的文件
             print(f'正在处理文件: {filename}')
 
-            # 读取图片
-            src_img = cv2.imread(file_path)
+            # 判断文件类型
+            if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+                # 读取图片
+                src_img = cv2.imread(file_path)
 
-            # 使用 小目标检测 模型进行检测
+                # 使用小目标检测模型进行检测
+                res_img = self.detectModelFun(src_img)
 
-            res_img = self.detectModelFun(src_img)
+                # 保存处理后的图片
+                output_path = os.path.join(exp_dir, filename)
+                cv2.imwrite(output_path, res_img)  # 保存结果图像
 
-            # 保存处理后的图片
-            output_path = os.path.join(exp_dir, filename)
-            cv2.imwrite(output_path, res_img)  # 保存结果图像
+            elif filename.lower().endswith(('.avi', '.mp4')):
+                # 读取视频
+                cap = cv2.VideoCapture(file_path)
+
+                if not cap.isOpened():
+                    print(f"无法打开视频文件: {filename}")
+                    continue
+
+                # 获取视频信息
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+                # 创建 VideoWriter 对象以保存处理后的视频
+                output_video_path = os.path.join(exp_dir, filename)
+                fourcc = cv2.VideoWriter_fourcc(*'XVID')  # 可根据需要修改编码格式
+                out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
+
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+
+                    # 使用小目标检测模型进行检测
+                    res_frame = self.detectModelFun(frame)
+
+                    # 写入处理后的帧
+                    out.write(res_frame)
+
+                cap.release()
+                out.release()
 
             # 更新进度条
             progress_dialog.setValue(i + 1)
@@ -334,8 +387,6 @@ class MWindow(QWidget, Ui_Form):
         progress_dialog.close()
         self.detectMGridWidget.update_file_path(exp_dir)
         print(f'检测完成，结果保存在: {exp_dir}')
-
-
 
     def noiseReductionChooseTestSet(self):
         print('小目标去噪选择测试集')
@@ -366,6 +417,7 @@ class MWindow(QWidget, Ui_Form):
             # 创建消息框
             QMessageBox.warning(self, "选择模型", "请先选择一个去噪模型。")
             return
+
         print('小目标去噪开始检测')
 
         tmp_path = 'run/noiseReduction/tmp'
@@ -391,19 +443,51 @@ class MWindow(QWidget, Ui_Form):
 
         for i, filename in enumerate(files):
             file_path = os.path.join(tmp_path, filename)
-
             print(f'正在处理文件: {filename}')
 
-            # 读取图片
-            src_img = cv2.imread(file_path)
+            # 判断文件类型
+            if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+                # 读取图片
+                src_img = cv2.imread(file_path)
 
+                # 使用小目标去噪模型进行检测
+                res_img = self.noiseReductionModelFun(src_img)
 
-            # 使用 小目标去噪 模型进行检测
-            res_img = self.noiseReductionModelFun(src_img)
+                # 保存处理后的图片
+                output_path = os.path.join(exp_dir, filename)
+                cv2.imwrite(output_path, res_img)  # 保存结果图像
 
-            # 保存处理后的图片
-            output_path = os.path.join(exp_dir, filename)
-            cv2.imwrite(output_path, res_img)  # 保存结果图像
+            elif filename.lower().endswith(('.avi', '.mp4')):
+                # 读取视频
+                cap = cv2.VideoCapture(file_path)
+
+                if not cap.isOpened():
+                    print(f"无法打开视频文件: {filename}")
+                    continue
+
+                # 获取视频信息
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+                # 创建 VideoWriter 对象以保存处理后的视频
+                output_video_path = os.path.join(exp_dir, filename)
+                fourcc = cv2.VideoWriter_fourcc(*'XVID')  # 可根据需要修改编码格式
+                out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
+
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+
+                    # 使用小目标去噪模型进行检测
+                    res_frame = self.noiseReductionModelFun(frame)
+
+                    # 写入处理后的帧
+                    out.write(res_frame)
+
+                cap.release()
+                out.release()
 
             # 更新进度条
             progress_dialog.setValue(i + 1)
@@ -460,7 +544,7 @@ class MWindow(QWidget, Ui_Form):
                 self.currentClassName = folder_name
                 self.currentBtnName = chinese_name
                 self.currentUploadPath = folder_path
-                self.on_class_button_click(self.currentClassName,self.currentBtnName,self.currentUploadPath)
+                self.on_class_button_click(self.currentClassName, self.currentBtnName, self.currentUploadPath)
 
                 print(f"分类中文名: {chinese_name}, 分类文件夹名称: {folder_name}")
                 QMessageBox.information(self, "成功", "分类创建成功！")
@@ -498,8 +582,12 @@ class MWindow(QWidget, Ui_Form):
     def uploadPicture(self):
         try:
             # 使用 QFileDialog 获取多个文件路径
-            file_names, _ = QFileDialog.getOpenFileNames(self, "选择图片", "",
-                                                         "Images (*.png *.jpg *.jpeg);;All Files (*)")
+            file_names, _ = QFileDialog.getOpenFileNames(
+                self,
+                "选择图片和视频",
+                "",
+                "Images (*.png *.jpg *.jpeg);;Videos (*.avi *.mp4);;All Files (*)"
+            )
 
             if file_names:
                 progress_dialog = QProgressDialog("上传文件中，请稍候...", "取消", 0, len(file_names), self)

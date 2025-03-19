@@ -1,2 +1,3 @@
 /run/detect/
 /run/noiseReduction/
+__pycache__/

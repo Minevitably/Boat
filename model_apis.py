@@ -16,7 +16,17 @@ def Yolov10Predict(src_img):
     :return: 处理后的图片
     """
     res_img = src_img
+    # 检查设备
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+    # 初始化模型
+    # TODO: 这里可以进行性能优化，例如在程序初始化后只加载一次模型
+    # 目前有多少张图片就会载入多少次模型
+    model = YOLO('yolo10n.pt')  # 使用适当的模型文件
+
+    # 进行目标检测
+    results = model(src_img, device=device)  # 指定设备
+    res_img = results[0].plot()  # 绘制结果
     return res_img
 
 
@@ -33,7 +43,7 @@ def Yolov11Predict(src_img):
     # 初始化模型
     # TODO: 这里可以进行性能优化，例如在程序初始化后只加载一次模型
     # 目前有多少张图片就会载入多少次模型
-    model = YOLO('yolo11n.pt')  # 使用适当的模型文件
+    model = YOLO('best.pt')  # 使用适当的模型文件
 
     # 进行目标检测
     results = model(src_img, device=device)  # 指定设备

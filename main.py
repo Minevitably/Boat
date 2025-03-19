@@ -415,7 +415,7 @@ class MWindow(QWidget, Ui_Form):
         # 检查模型是否选择
         if self.noiseReductionModelFun is None:
             # 创建消息框
-            QMessageBox.warning(self, "选择模型", "请先选择一个去噪模型。")
+            QMessageBox.warning(self, "选择算法", "请先选择一个去噪算法。")
             return
 
         print('小目标去噪开始检测')
@@ -648,20 +648,20 @@ class MWindow(QWidget, Ui_Form):
 
     def M1Model(self):
         print("M1Model")
-        QMessageBox.information(self, "选择模型", "选择了M1模型。")
+        QMessageBox.information(self, "选择模型", "选择了BilateralFilter算法。")
         self.noiseReductionModelFun = M1Predict
         pass
 
     def M2Model(self):
         print("M2Model")
-        QMessageBox.information(self, "选择模型", "选择了M2模型。")
+        QMessageBox.information(self, "选择模型", "选择了GaussianBlur算法。")
 
         self.noiseReductionModelFun = M2Predict
         pass
 
     def M3Model(self):
         print("M3Model")
-        QMessageBox.information(self, "选择模型", "选择了M3模型。")
+        QMessageBox.information(self, "选择模型", "选择了MedianFilter算法。")
 
         self.noiseReductionModelFun = M3Predict
         pass

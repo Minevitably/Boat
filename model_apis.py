@@ -65,11 +65,17 @@ def RCNNPredict(src_img):
 # 下面三个模型是小目标去噪使用的模型
 def M1Predict(src_img):
     """
-    使用M1模型进行预测
+    使用M1模型进行去噪处理
     :param src_img: 原始图片
     :return: 处理后的图片
     """
     res_img = src_img
+
+    # 应用双边滤波器去除噪声
+    diameter = 9      # 邻域直径
+    sigmaColor = 75   # 颜色空间的标准差
+    sigmaSpace = 75   # 空间坐标的标准差
+    res_img = cv2.bilateralFilter(res_img, diameter, sigmaColor, sigmaSpace)
 
     return res_img
 
@@ -81,6 +87,11 @@ def M2Predict(src_img):
     """
     res_img = src_img
 
+    # 应用高斯滤波器
+    ksize = (5, 5)  # 核大小，必须是正奇数
+    sigmaX = 0  # X方向的标准差
+    res_img = cv2.GaussianBlur(res_img, ksize, sigmaX)
+
     return res_img
 
 def M3Predict(src_img):
@@ -90,6 +101,10 @@ def M3Predict(src_img):
     :return: 处理后的图片
     """
     res_img = src_img
+
+    # 应用中值滤波器
+    ksize = 5  # 内核大小，必须是大于1的奇数
+    res_img = cv2.medianBlur(res_img, ksize)
 
     return res_img
 
